@@ -1,0 +1,15 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+authors:
+- family-names: "Cushing"
+  given-names: "David"
+  orcid: "https://orcid.org/0000-0001-5488-2705"
+- family-names: "Stagg"
+  given-names: "George William"
+- family-names: "Stewart"
+  given-names: "David"
+  orcid: "https://orcid.org/0000-0002-4118-9220"
+title: "A Prolog assisted search for new simple Lie algebras"
+version: v1
+date-released: 2022-07-03
+url: "https://arxiv.org/abs/2207.01094"
