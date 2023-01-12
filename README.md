@@ -3,6 +3,8 @@ This repository is a suplement to the article https://arxiv.org/abs/2207.01094
 
 It contains computer code to search for simple Lie algebras over GF(2) and also contains a library of all known simple Lie algebras over GF(2) (to the best of our knowledge).
 
+If you find any of this repository useful then please cite the above article.
+
 ## Prolog code
 In our search for new simple Lie algebras over GF(2) we specifically look for those with a thin decomposition.
 In SICSTUScode and SWIcode you will find programs that give an exhaustive search of thin Lie algebras in
