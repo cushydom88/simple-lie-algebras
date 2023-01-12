@@ -1,7 +1,7 @@
 :- use_module(library(clpfd)), set_prolog_flag(clpfd_monotonic, true).
 
 % The following code runs in SWI prolog with monotonic enabled. 
-% See the Sicstus version of the code for necessary comments 
+% See the Sicstus version of the code for necessary comments.
 
 %%% 0. THE MAIN PREDICATE %%%
 reduced_thin_search( N, ThinTables ) :-

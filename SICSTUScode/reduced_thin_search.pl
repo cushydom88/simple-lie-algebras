@@ -5,52 +5,67 @@
 :- use_module(library(ugraphs)).
 :- use_module(library(between)).
 
-% The following predicate reduced_thin_search is our main predicate for searching for simple thin Lie algebras. 
-% The parameter N is inputted by the users. The output is ThinTables which is a list of NxN arrays. Each of which represents a thin Lie algebra of dimension 2^N - 1
-% For N = 2,3,4,5 each member of ThinTables represents a simple Lie algebra. We confirm this using graph
-% For N >= 4 there are different members of ThinTables that represent the same Lie algebra. See the main body of the paper for does_not_centralise
-
-% reduced_thin_search consists of the following 4 main parts
-
+% The following predicate reduced_thin_search is our main predicate for
+% searching for simple thin Lie algebras. The parameter N is inputted by the
+% users. The output is ThinTables which is a list of NxN arrays. Each of which
+% represents a thin Lie algebra of dimension 2^N - 1. For N = 2,3,4,5 each
+% member of ThinTables represents a simple Lie algebra. We confirm this using
+% graph. % For N >= 4 there are different members of ThinTables that represent
+% the same Lie algebra. See the main body of the paper for does_not_centralise.
+%
+% reduced_thin_search consists of the following 4 main parts.
+%
 % 1. INITIAL THIN SEARCH
-% The predicate thin_search generates FirstTables which consists of a list of tables each representing a thin Lie algebra
-% thin_search itself consists of three main componenets:
-% a. Implement the Lie bracket as constraints so that each table produced represents a valid Lie algebra 
-% b. Constraints which are necessary for simplicity of the represented Lie algebras via the predicates
-%    stop_certain_ideals and act_faithfully. See the paper for the theoretical underpinning of these constraints.
-% c. Symmetry breaking constraints via the predicate break_gl2_symmetries. These constraints removes some tables
-%    which represent the same Lie algebra. Not all possible symmetries can be added as constraints due to times
-%    and memory issues.  
-% Note that the order of the predicates inside thin_search do not follow the order listed above.
-% The order constraints are added impact the run time. We have optimised the ordering. 
-
+% The predicate thin_search generates FirstTables which consists of a list of
+% tables each representing a thin Lie algebra. thin_search itself consists of
+% three main components:
+% a. Implement the Lie bracket as constraints so that each table produced
+%    represents a valid Lie algebra.
+% b. Constraints which are necessary for simplicity of the represented Lie
+%    algebras via the predicates stop_certain_ideals and act_faithfully. See the
+%    paper for the theoretical underpinning of these constraints.
+% c. Symmetry breaking constraints via the predicate break_gl2_symmetries. These
+%    constraints removes some tables which represent the same Lie algebra. Not
+%    all possible symmetries can be added as constraints due to time and memory
+%    issues.
+% Note that the order of the predicates inside thin_search do not follow the
+% order listed above. The order constraints are added impact the run time. We
+% have optimised the ordering.
+%
 % 2. POST SEARCH SIMPLICTY CHECK
-% The predicate remove_non_simple_tables takes in the tables FirstTables and removes certain tables representing
-% non simple Lie algebras. See the paper for a description of what ideals are checked for .
-% The tables which pass this check are represented by SimpleTables.
-% In theory this condition could have been converted to a constraint and added to thin_search.
-% However doing this is significantly slower than performing them as a post process.
-
+% The predicate remove_non_simple_tables takes in the tables FirstTables and
+% removes certain tables representing non-simple Lie algebras. See the paper for
+% a description of what ideals are checked for. The tables which pass this check
+% are represented by SimpleTables. In theory this condition could have been
+% converted to a constraint and added to thin_search. However doing this is
+% significantly slower than performing them as a post process.
+%
 % 3. LEX REDUCE TABLES
-% As mentioned in 1. the predicate break_gl2_symmetries does not implement all possible symmetries as constraints.
-% We now implement the rest of these symmetries on the tables SimpleTables and output the results to ReducedTables.
-% At this stage no two tables in ReducedTables can be transformed in to each other via permutations of roots. 
-
+% As mentioned in 1. the predicate break_gl2_symmetries does not implement all
+% possible symmetries as constraints. We now implement the rest of these
+% symmetries on the tables SimpleTables and output the results to ReducedTables.
+% At this stage no two tables in ReducedTables can be transformed in to each
+% other via permutations of roots.
+%
 % 4. TORAL SWITCHING 
-% We now remove further tables from ReducedTables representing the same Lie alegbra.
-% For each table in ReducedTables we perform one toral switch for each nilpotent basis element in that table.
-% A graph is then constructed with vertex set represented by the elements of ReducedTables 
-% and an edge between two vertices if a toral switch transformed the tables represented by the two vertices in to one another.
-% For each connected componenet of this graph we take one table from it and output these to ThinTables.
-
-% In addition to the above sections we have the following two sections that collect shared predicates used throughout the code
-
+% We now remove further tables from ReducedTables representing the same Lie
+% algebra. For each table in ReducedTables we perform one toral switch for each
+% nilpotent basis element in that table. A graph is then constructed with vertex
+% set represented by the elements of ReducedTables and an edge between two
+% vertices if a toral switch transformed the tables represented by the two
+% vertices in to one another. For each connected component of this graph we take
+% one table from it and output these to ThinTables.
+%
+% In addition to the above sections we have the following two sections that
+% collect shared predicates used throughout the code.
+%
 % 5. SYMMETRY PREDICATES
-% These are a collection of predicates used throughout the code that deal with permuting roots.
-
+% These are a collection of predicates used throughout the code that deal with
+% permuting roots.
+%
 % 6. UTILITY PREDICATES
 % These are a collection of generic predicates used throughout the code.
-
+%
 % An example prompt to run the main predicate is 
 % ['ThinSymmetrySicstus.pl'].
 % test(4, ThinTables), maplist( writeln, ThinTables).
@@ -75,7 +90,7 @@ thin_search( Vs, N, Rows) :-
 	maplist( set_value_to_zero, Indices, Rows), % Lie Bracket constraint: [x, x] = 0
     stop_certain_ideals(Rows,Indices), % Simplicity constraints
     act_faithfully(Rows,Indices), % Simplicity constraints
-	jacobi_identity_full( Indices, Rows), % Lie Bracket constraint: The Jacobi Indentity
+	jacobi_identity_full( Indices, Rows), % Lie Bracket constraint: The Jacobi Identity
 	break_gl2_symmetries( Vs, Rows, N ). % Symmetry breaking constraints
 
 % The Jacobi Identity 
@@ -140,7 +155,7 @@ does_not_centralise_helper( Rows, X, A, Entry ) :-
 get_gl2( GL2 ) :- GL2 = [ [[1,0],[1,1]],[[1,1],[0,1]],[[1,1],[1,0]],[[0,1],[1,1]],[[0,1],[1,0]] ].
 
 % For each pair of simple roots and each element of gl_2
-% create a symmetry breaking constrint
+% create a symmetry breaking constraint
 break_gl2_symmetries( Vs, Rows, N ) :-
     get_gl2( GL2 ),
     numlist( N, SimpleInds ),
@@ -186,7 +201,7 @@ break_symmetry( Vs, Rows, RowPerm ) :-
 	lex_chain( [ Vs, Ns ] ).
 %%%%%%
 
-%%% 2. POST SEARCH SIMPLICTY CHECK %%%
+%%% 2. POST SEARCH SIMPLICITY CHECK %%%
 % Search for certain non-trivial ideals for each table in Tables
 % See paper for explanation
 remove_non_simple_tables( Tables, SimpleTables ) :-
@@ -236,7 +251,7 @@ lex_reduce_tables( N, SimpleTables, ReducedTables ) :-
 
 % Recursively generate ReducedList from List
 % 1. Add the element of List with min lexicographical order to ReducedList, call this MinTable
-% 2. Remove all elements equivalement to MinTable via row permutations from List
+% 2. Remove all elements equivalent to MinTable via row permutations from List
 % 3. Repeat 1. and 2. until List is empty 
 lex_reduce( N, Roots, Powers, List, ReducedList ) :-
     lex_reduce( N, Roots, Powers, List, [], ReducedList).
@@ -289,7 +304,7 @@ perform_toral_switchings( N, Tables, SwitchedTables ) :-
     once(make_adjacency_mat( Tables, OrderedTablesList, AdjacencyMat )),
     adjacency_mat_to_ugraph( AdjacencyMat, SwitchingGraph ),
     conn_comps( SwitchingGraph, Comps ),
-    % Return one table per connected componenet of the graph
+    % Return one table per connected component of the graph
     maplist( get_min_from_comp( Tables ), Comps, SwitchedTables ).
 
 % Finds nilpotent basis elements
@@ -341,7 +356,7 @@ make_new_basis_helper( Indices, Table, BaseTorus, NilpIndex, ModifyToralElementC
     sum( NewBasisElement, #>, 0 ),
     maplist( apply_root_value( Indices, Table, NilpIndex, NewBasisElement), BaseTorus, ModifyToralElementChecker, Root ).
 
-% Apply a new toral element on NewBasisElement and kill or stabalise it depending on RootVal
+% Apply a new toral element on NewBasisElement and kill or stableise it depending on RootVal
 % NewBasisElement is determined by the constraints created here
 apply_root_value( Indices, Table, NilpIndex, NewBasisElement, ToralRow, ModifyToralElement, RootVal ) :-
     maplist( times, ToralRow, NewBasisElement, TorusOnElement),
@@ -453,7 +468,7 @@ collect_nbrs(A, Indices, Index, Nbrs ) :-
     nth1( Index, A, Row ),
     findall( X, ( member( X, Indices ), nth1( X, Row, 1 ) ), Nbrs).
 
-% Calculte the connected componenets of a graph.
+% Calculate the connected components of a graph.
 % We make use of transitive_closure from ugraphs
 conn_comps( G, Comps ) :-
     length( G, N), 
@@ -500,7 +515,7 @@ can_permute( N, Roots, Powers, T1, T2, Mat, SortedRowSums ) :-
     length( Mat, N ),
 	append( Mat, Ms), 
     domain( Ms, 0, 1),
-    % Use the row sums of T1 and T2 to crete constraints on which rows of T1 are mapped to which rows of T2
+    % Use the row sums of T1 and T2 to create constraints on which rows of T1 are mapped to which rows of T2
     partition_by_row_sums( T1, SortedRowSums, Partition1 ),
     partition_by_row_sums( T2, SortedRowSums, Partition2 ),
     maplist( map_partitions(N, Mat, Powers), Partition1, Partition2 ),
