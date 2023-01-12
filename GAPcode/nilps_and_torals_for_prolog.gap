@@ -1,4 +1,6 @@
-# For any set of adjoint matrices or Lie algebra, generate a string containing the constraints needed for Sicstus Prolog to use CLPFD. Output it to a prologfile, where the prologfile writes to its own file.
+# For any set of adjoint matrices or Lie algebra, generate a string containing
+# the constraints needed for Sicstus Prolog to use CLPFD. Output it to a
+# Prolog file, where the Prolog file writes to its own file.
 
 AdjMatsTo2NilpConst := function (Admats)
 	local IntAdmats,mat,row,ent,R,n,x,genelt,i,cons,sqr,sqrAsTimes,withpreamble;
