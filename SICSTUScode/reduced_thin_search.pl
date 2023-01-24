@@ -464,28 +464,6 @@ make_new_basis( Indices, Table, BaseTorus, NilpIndex, ModifyToralElementChecker,
                                      ModifyToralElementChecker, Root, NewBasisElement ) ),
         labeling( [], NewBasisElement ). % FIXME: what about multiple solutions?
 
-% make_new_basis_helper( Indices, Table, BaseTorus, NilpIndex, ModifyToralElementChecker
-%                      , Root, NewBasisElement ) :-
-%         at_least_one( NewBasisElement ),
-%         maplist( apply_root_value( Indices, Table, NilpIndex, NewBasisElement), BaseTorus,
-%                  ModifyToralElementChecker, Root ).
-
-% %% Apply a new toral element on NewBasisElement and kill or stabalise it depending on RootVal
-% %% NewBasisElement is determined by the constraints created here
-% apply_root_value( Indices, Table, NilpIndex, NewBasisElement, ToralRow,
-%                   ModifyToralElement, RootVal ) :- % COMMENT: ModifyToralElement, RootVal are 0/1
-%         fast_nth1( NilpIndex, Table, NilpRow ),
-%         maplist( nilp_on_element(NilpRow, NewBasisElement, NilpIndex), Indices,
-%                  NilpOnElement ),
-%         (   foreach(NOE,NilpOnElement),
-%             foreach(NBE,NewBasisElement),
-%             foreach(TR,ToralRow),
-%             param(ModifyToralElement,RootVal)
-%         do  SNOE #<=> ModifyToralElement #/\ NOE,
-%             SNBE #<=> RootVal #/\ NBE,
-%             SNBE #<=> (TR #/\ NBE) #\ SNOE
-%         ).
-
 make_new_basis_helper( Indices, Table, BaseTorus, NilpIndex, ModifyToralElementChecker
                      , Root, NewBasisElement ) :-
         at_least_one( NewBasisElement ),
@@ -536,28 +514,26 @@ make_new_table( Indices, Pairs, Table, NewBasis, NewTable ) :-
         maplist( same_length(NewTable), NewTable ),
         maplist( make_new_table_entry( Indices, Table, IntBasis, NewTable ), Pairs ).
 
-make_new_table_entry( Indices, Table, IntBasis, NewTable, [I1, I2] ) :-
+make_new_table_entry( _Indices, Table, IntBasis, NewTable, [I1, I2] ) :-
         I3 is xor( I1, I2 ),
         fast_nth1( I1, IntBasis, Ints1 ),
         fast_nth1( I2, IntBasis, Ints2 ),
         fast_nth1( I3, IntBasis, Ints3 ),
-        fast_nth1( 1, Ints3, MainInt ),
-        maplist( make_xor_pair(MainInt), Indices, XORPairs ),
-        include( filter_xor_pairs( Ints1, Ints2 ), XORPairs, FilteredPairs ),
+        filtered_pairs(Ints1, Ints2, Ints3, FilteredPairs, []),
         get_entries( Table, FilteredPairs, Entries ),
         sumlist(Entries, Tot),
         Val is Tot mod 2,
         get_entry( NewTable, [I1, I2], Val ),
         get_entry( NewTable, [I2, I1], Val ).
 
-%% The below predicates appear as they are due to Sicstus not having a version
-%% of xor compatible with the # operation in CLPFD.
-filter_xor_pairs( Ints1, Ints2, [I, J ] ) :-
-        member(I, Ints1),
-        member(J, Ints2).
-
-make_xor_pair( A, B, [B, C] ) :-
-        C is xor( A, B).
+filtered_pairs(Ints1, Ints2, [MainInt|_]) -->
+        (   foreach(X,Ints1),
+            param(Ints2,MainInt)
+        do  (   foreach(Y,Ints2),
+                param(X,MainInt)
+            do  ({X is xor(Y,MainInt)} -> [[Y,X]] ; [])
+            )
+        ).
 
 intify_basis( Indices, BasisRow, Ints ) :-
         include( intify_basis_helper(BasisRow), Indices, Ints ).
