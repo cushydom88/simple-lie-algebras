@@ -95,16 +95,35 @@ thin_search( Vs, N, Rows) :-
         act_faithfully(Rows,Indices),      % Simplicity constraints
         jacobi_identity_full( Indices, Rows), % Lie Bracket constraint
         break_gl2_symmetries( Vs, Rows, N ), % Symmetry breaking constraints
-        maplist(number_of_ones(N), Rows).    % Implied constraint
+        maplist(number_of_ones(N), Rows),    % Implied constraint
+        maplist(lemma_2_12(N, Indices), Indices, Rows), % Implied constraint
+        true.
 
 number_of_ones(N, Row) :-
         (   N = 3 -> Dom = {3,4,5}
         ;   N = 4 -> Dom = {4,6,7,8,10,11}
         ;   N = 5 -> Dom = {5,8,9,12,14,15,16,20,23}
-        ;   true  -> Dom = 0..sup
+        ;   true  -> Max is 2^(N-1) + 2^(N-2) - 1,
+                     Dom = (1..Max)
         ),
         S in Dom,
-        sum(Row, #=, S).        
+        sum(Row, #=, S).
+
+lemma_2_12(N, Indices, I, Row) :-
+        Pow1 is 2^(N-1),
+        (   foreach(J,Indices),
+            foreach(MJ,Row),
+            fromto(A2,A3,A4,[]),
+            param(I,Row)
+        do  (   I = J -> A3 = A4
+            ;   IJ is xor(I,J),
+                fast_nth1(IJ, Row, MIJ),
+                X #<=> MJ #/\ MIJ,
+                A3 = [X|A4]
+            )
+        ),
+        sum(A2, #=, S),
+        (N =< 5 -> S in {0,Pow1} ; S in {0} \/ (18..Pow1)).
 
 %% The Jacobi Identity
 jacobi_identity_full( Indices, Rows) :-
