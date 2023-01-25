@@ -302,6 +302,46 @@ break_symmetry( Vs, Rows, RowPerm ) :-
 remove_non_simple_tables( Tables, SimpleTables ) :-
         include( simple_check, Tables, SimpleTables ).
 
+% A graph-oriented way of detecting ideals.
+% 
+% Let G = (V,E) be the digraph where V = the "elements" (e.g. 1..15) and E is the set of edges (i,i xor j) for which M[i,j] = 1.
+% 
+% Now if G has a strongly connected component C that is a clique, then C is an ideal.
+% 
+% It seems to work, but unfortunately it is slower than the code below.
+% 
+% simple_check(Rows) :-
+%         \+ rows_ideal(Rows, _).
+
+% rows_ideal(Rows, Ideal) :-
+%         rows_edges(Rows, Vertices, Edges, []),
+%         vertices_edges_to_ugraph(Vertices, Edges, Graph),
+%         reduce(Graph, R),
+%         member(Ideal-[], R),
+%         ord_subtract(Vertices, Ideal, Rest),
+%         del_vertices(Graph, Rest, Clique),        
+%         length(Clique, Len),
+%         Len1 is Len-1,
+%         (   foreach(_-Ns,Clique),
+%             param(Len1)
+%         do  length(Ns, Len1)
+%         ).
+
+% rows_edges(Rows, Vertices) -->
+%         (   foreach(Row,Rows),
+%             foreach(I,Vertices),
+%             count(I,1,_)
+%         do  (   foreach(X,Row),
+%                 count(J,1,_),
+%                 param(I)
+%                 do  (   {X = 1}
+%                     ->  {IJ is xor(I,J)},
+%                         [I-IJ]
+%                     ;   []
+%                     )
+%             )
+%         ).
+
 simple_check( Rows ) :-
         length( Rows, N ),
         numlist( N, Indices ),
