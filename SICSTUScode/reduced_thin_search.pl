@@ -308,10 +308,32 @@ remove_non_simple_tables( Tables, SimpleTables ) :-
 % 
 % Now if G has a strongly connected component C that is a clique, then C is an ideal.
 % 
-% It seems to work, but unfortunately it is slower than the code below.
+% The code implements this idea it without actually constructing G, because the graph algorithms are a bit slow.
 % 
-% simple_check(Rows) :-
-%         \+ rows_ideal(Rows, _).
+simple_check(Rows) :-
+        \+ rows_ideal(Rows, _).
+
+rows_ideal(Rows, Ideal) :-
+        (   foreach(Row,Rows),
+            foreach(Signature-I,SRows1),
+            count(I,1,_)
+        do  row_signature(Row, I, Signature)
+        ),
+        keysort(SRows1, SRows2),
+        keyclumped(SRows2, SRows3),
+        member(Ideal-Ideal, SRows3).
+
+row_signature(Row, I, Signature) :-
+        (   foreach(X,Row),
+            fromto(S1,S2,S3,[]),
+            count(J,1,_),
+            param(I)
+        do  (   X = 0 -> S2 = S3
+            ;   IJ is xor(I,J),
+                S2 = [IJ|S3]
+            )
+        ),
+        sort([I|S1], Signature).
 
 % rows_ideal(Rows, Ideal) :-
 %         rows_edges(Rows, Vertices, Edges, []),
@@ -342,44 +364,44 @@ remove_non_simple_tables( Tables, SimpleTables ) :-
 %             )
 %         ).
 
-simple_check( Rows ) :-
-        length( Rows, N ),
-        numlist( N, Indices ),
-        maplist( sumlist, Rows, RowSums ),
-        sort( RowSums, UniqueRowSums ),
-        (   foreach(B,UniqueRowSums),
-            foreach(A,IdealSizes)
-        do  A is B+1
-        ),
-        maplist( check_for_ideals( Rows, Indices ), IdealSizes ).
+% simple_check( Rows ) :-
+%         length( Rows, N ),
+%         numlist( N, Indices ),
+%         maplist( sumlist, Rows, RowSums ),
+%         sort( RowSums, UniqueRowSums ),
+%         (   foreach(B,UniqueRowSums),
+%             foreach(A,IdealSizes)
+%         do  A is B+1
+%         ),
+%         maplist( check_for_ideals( Rows, Indices ), IdealSizes ).
 
-check_for_ideals(Rows, Indices, IdealSize ) :-
-        (   foreach(A1,Indices),
-            fromto(CorrectRankRoots,CRR1,CRR2,[]),
-            param(Rows,IdealSize)
-        do  fast_nth1(A1, Rows, Row),
-            sumlist(Row, S),
-            (S is IdealSize-1 -> CRR1 = [A1|CRR2] ; CRR1 = CRR2)
-        ),
-        length(CorrectRankRoots, NRoots),
-        (   IdealSize > NRoots -> PossibleIdeals = []
-        ;   IdealSize = NRoots -> PossibleIdeals = [CorrectRankRoots]
-        ;   length( A, IdealSize),
-            findall( A, subseq0( CorrectRankRoots, A ), PossibleIdeals )
-        ),
-        maplist( check_ideal( Rows ), PossibleIdeals ).
+% check_for_ideals(Rows, Indices, IdealSize ) :-
+%         (   foreach(A1,Indices),
+%             fromto(CorrectRankRoots,CRR1,CRR2,[]),
+%             param(Rows,IdealSize)
+%         do  fast_nth1(A1, Rows, Row),
+%             sumlist(Row, S),
+%             (S is IdealSize-1 -> CRR1 = [A1|CRR2] ; CRR1 = CRR2)
+%         ),
+%         length(CorrectRankRoots, NRoots),
+%         (   IdealSize > NRoots -> PossibleIdeals = []
+%         ;   IdealSize = NRoots -> PossibleIdeals = [CorrectRankRoots]
+%         ;   length( A, IdealSize),
+%             findall( A, subseq0( CorrectRankRoots, A ), PossibleIdeals )
+%         ),
+%         maplist( check_ideal( Rows ), PossibleIdeals ).
 
-check_ideal( Rows, PossibleIdeal ) :-
-        \+maplist( check_ideal_helper(Rows, PossibleIdeal), PossibleIdeal ).
+% check_ideal( Rows, PossibleIdeal ) :-
+%         \+maplist( check_ideal_helper(Rows, PossibleIdeal), PossibleIdeal ).
 
-check_ideal_helper( Rows, PossibleIdeal, X ) :-
-        maplist( check_ideal_helper_2( Rows, X), PossibleIdeal ).
+% check_ideal_helper( Rows, PossibleIdeal, X ) :-
+%         maplist( check_ideal_helper_2( Rows, X), PossibleIdeal ).
 
-check_ideal_helper_2( Rows, X, Y ) :-
-        (   X = Y -> true
-        ;   I is xor(X,Y),
-            get_entry( Rows, [I,X], 1)
-        ).
+% check_ideal_helper_2( Rows, X, Y ) :-
+%         (   X = Y -> true
+%         ;   I is xor(X,Y),
+%             get_entry( Rows, [I,X], 1)
+%         ).
 %%%%%%
 
 %%% 3. LEX REDUCE TABLES %%%
