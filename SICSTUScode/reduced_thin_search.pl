@@ -63,7 +63,7 @@
 reduced_thin_search( N, ThinTables ) :-
         preprocess(N),
         statistics(runtime, _),
-        findall( Rows, (thin_search( Vs, N, Rows), labeling( [], Vs) ), FirstTables ),
+        findall( Rows, thin_table(N,Rows), FirstTables ),
         statistics(runtime, [_,T1]),
         length(FirstTables, N1), print_message(informational, format('~w FirstTables in ~w ms',[N1,T1])),
         remove_non_simple_tables( FirstTables, SimpleTables ),
@@ -74,29 +74,42 @@ reduced_thin_search( N, ThinTables ) :-
         length(ReducedTables, N3), print_message(informational, format('~w ReducedTables in ~w ms',[N3,T3])),
         once(perform_toral_switchings( N, ReducedTables, ThinTables )),
         statistics(runtime, [_,T4]),
-        length(ThinTables, N4), print_message(informational, format('~w ThinTables in ~w ms',[N4,T4])),
-        findall(Nones, (member(Th,ThinTables), member(R,Th), sumlist(R,Nones)), Noness),
-        sort(Noness, NonesSet),
-        print_message(informational, format('ThinTable #1s in ~w',[NonesSet])).
+        length(ThinTables, N4), print_message(informational, format('~w ThinTables in ~w ms',[N4,T4])).
+
 %%%%%%
 
 %%% 1. INITIAL THIN SEARCH %%%
 
-thin_search( Vs, N, Rows) :-
+thin_table(N, Rows) :-
+        thin_search( Vs, N, Rows, Succs),
+        labeling( [], Vs),
+        (labeling([], Succs) -> true).
+
+thin_search( Vs, N, Rows, Succs) :-
         M is 2^N-1,
         length(Rows, M),
         numlist(M, Indices),
         maplist(same_length(Rows),Rows),
         append(Rows, Vs),
-        transpose(Rows, Rows),  % Lie Bracket constraint
         maplist( set_value_to_zero, Indices, Rows), % Lie Bracket constraint
+        fast_transpose(Rows, Rows),  % Lie Bracket constraint
         domain( Vs, 0, 1),
-        stop_certain_ideals(Rows,Indices), % Simplicity constraints
-        act_faithfully(Rows,Indices),      % Simplicity constraints
-        jacobi_identity_full( Indices, Rows), % Lie Bracket constraint
-        break_gl2_symmetries( Vs, Rows, N ), % Symmetry breaking constraints
-        maplist(number_of_ones(N), Rows),    % Implied constraint
-        maplist(lemma_2_12(N, Indices), Indices, Rows). % Implied constraint
+        stop_certain_ideals(Rows,Indices), % Simplicity constraints ESSENTIAL
+        act_faithfully(Rows,Indices),      % Simplicity constraints QUESTIONABLE, 2.5% fewer backtracks
+        jacobi_identity_full( Indices, Rows), % Lie Bracket constraint PAYS OFF
+        break_gl2_symmetries( Vs, Rows, N ), % Symmetry breaking constraints PAYS OFF
+        maplist(number_of_ones(N), Rows), % Implied constraint
+        maplist(lemma_2_12(N, Indices), Indices, Rows), % Implied constraint PAYS OFF
+        % strongly_connected(Rows, Succs), % Alas, too slow
+        Succs = [].
+
+% strongly_connected(Rows, Succs) :-
+%         warp_table(Rows, WRows),
+%         (   foreach(WRow,WRows),
+%             foreach(Succ,Succs)
+%         do  element(Succ, WRow, 1)
+%         ),
+%         circuit(Succs).
 
 number_of_ones(N, Row) :-
         (   N = 3 -> Dom = {3,4,5}
@@ -236,7 +249,15 @@ get_gl2( GL2 ) :-
 break_gl2_symmetries( Vs, Rows, N ) :-
         get_gl2( GL2 ),
         all_pairs_le_n(N, Pairs, []),
-        maplist( break_gl2_symmetry( Vs, Rows, N, GL2), Pairs ).
+        get_roots(N, Roots),
+        make_powers(N, Powers),
+        maplist( break_gl2_symmetry_rowperms(N, GL2, Roots, Powers), Pairs, RowPermss ),
+        append(RowPermss, RowPerms),
+        maplist( break_symmetry( Vs, Rows ), RowPerms ).
+
+break_gl2_symmetry_rowperms( N, GL2, Roots, Powers, [J,K], RowPerms ) :-
+        maplist( add_to_gln_small( N, [J, K] ), GL2, SmolGLN ),
+        maplist( fast_make_perm(Roots,Powers), SmolGLN, RowPerms ).
 
 all_pairs_le_n(N) -->
         (   for(I,1,N),
@@ -246,13 +267,6 @@ all_pairs_le_n(N) -->
             do  [[I,J]]
             )
         ).
-
-break_gl2_symmetry( Vs, Rows, N, GL2, [J,K] ) :-
-        maplist( add_to_gln_small( N, [J, K] ), GL2, SmolGLN ),
-        get_roots(N,Roots),
-        make_powers(N,Powers),
-        maplist( make_perm(Roots,Powers), SmolGLN, RowPerms ),
-        maplist( break_symmetry( Vs, Rows), RowPerms ).
 
 %% Create the subset of gl_n we create constraints for
 add_to_gln_small( N, [J,K], Mat1, NewMat ) :-
@@ -276,23 +290,28 @@ add_to_gln_small( N, [J,K], Mat1, NewMat ) :-
 %% RowPerm is applied to the rows and columns of Row to obtain NewerRows
 %% Add the constraint that Rows is lexicographically lower than NewerRows
 break_symmetry( Vs, Rows, RowPerm ) :-
-        (   foreach(Row,Rows),
-            foreach(Key-Row,KeyRows),
-            foreach(NewRow,NewRows),
-            foreach(_-NewRow,KeyNewRows),
-            foreach(TNewRow,TNewRows),
-            foreach(Key-TNewRow,KeyTNewRows),
-            foreach(NewerRow,NewerRows),
-            foreach(_-NewerRow,KeyNewerRows),
-            foreach(Key,RowPerm)
-        do  true
-        ),
-        keysort(KeyRows, KeyNewRows),
-        keysort(KeyTNewRows, KeyNewerRows),
-        transpose(NewRows, TNewRows),
-        same_length( Vs, Ns ),
+        fast_transpose(NewRows, TNewRows),
+        permute_matrix(RowPerm, Rows, NewRows, TNewRows, NewerRows),
         append(NewerRows, Ns),
         lex_chain( [ Vs, Ns ] ).
+
+%% NewerRows = Rows | permute(RowPerm) | inverse | permute(RowPerm)
+%% N.B. NewRows and TNewRows=inverse(NewRows) must be supplied pre-allocated
+permute_matrix(RowPerm, Rows, NewRows, TNewRows, NewerRows) :-
+        (   foreach(Key,RowPerm),
+            foreach(Row,Rows),
+            foreach(_-Row,KeyRows),
+            foreach(NewRow,NewRows),
+            foreach(Key-NewRow,KeyNewRows),
+            foreach(TNewRow,TNewRows),
+            foreach(_-TNewRow,KeyTNewRows),
+            foreach(NewerRow,NewerRows),
+            foreach(Key-NewerRow,KeyNewerRows)
+        do  true
+        ),
+        keysort(KeyNewRows, KeyRows),
+        keysort(KeyNewerRows, KeyTNewRows).
+
 %%%%%%
 
 %%% 2. POST SEARCH SIMPLICTY CHECK %%%
@@ -533,47 +552,53 @@ make_new_basis( Indices, Table, BaseTorus, NilpIndex, ModifyToralElementChecker,
                                      ModifyToralElementChecker, Root, NewBasisElement ) ),
         labeling( [], NewBasisElement ). % FIXME: what about multiple solutions?
 
-make_new_basis_helper( Indices, Table, BaseTorus, NilpIndex, ModifyToralElementChecker
-                     , Root, NewBasisElement ) :-
+make_new_basis_helper( Indices, Table, BaseTorus, NilpIndex, ModifyToralElementChecker,
+                       Root, NewBasisElement ) :-
         at_least_one( NewBasisElement ),
         maplist( apply_root_value( Indices, Table, NilpIndex, NewBasisElement), BaseTorus,
-                 ModifyToralElementChecker, Root, Tuples ),
-        append(Tuples, AllTuples),
-        root_value_extension(Extension),
-        table(AllTuples, Extension).
+                 ModifyToralElementChecker, Root ).
 
 %% Apply a new toral element on NewBasisElement and kill or stabalise it depending on RootVal
 %% NewBasisElement is determined by the constraints created here
 apply_root_value( Indices, Table, NilpIndex, NewBasisElement, ToralRow,
-                  ModifyToralElement, RootVal, Tuples ) :- % COMMENT: ModifyToralElement, RootVal are 0/1
+                  ModifyToralElement, RootVal ) :- % COMMENT: ModifyToralElement, RootVal, TotalRow are 0/1
         fast_nth1( NilpIndex, Table, NilpRow ),
         maplist( nilp_on_element(NilpRow, NewBasisElement, NilpIndex), Indices,
                  NilpOnElement ),
         (   foreach(NOE,NilpOnElement),
             foreach(NBE,NewBasisElement),
             foreach(TR,ToralRow),
-            foreach([ModifyToralElement,RootVal,NOE,NBE,TR], Tuples),
             param(ModifyToralElement,RootVal)
-        do  true
+        do  Key = [ModifyToralElement,RootVal,TR],
+            (   Key = [0,0,0] ->  true
+            ;   Key = [0,0,1] ->  NBE = 0
+            ;   Key = [0,1,0] ->  NBE = 0
+            ;   Key = [0,1,1] ->  true
+            ;   Key = [1,0,0] ->  NOE = 0
+            ;   Key = [1,0,1] ->  NBE #= NOE
+            ;   Key = [1,1,0] ->  NBE #= NOE
+            ;   Key = [1,1,1] ->  NOE = 0
+            )
         ).
 
-root_value_extension(Extension) :-
-        Tuple = [ModifyToralElement,RootVal,NOE,NBE,TR],
-        SNOE #<=> ModifyToralElement #/\ NOE,
-        SNBE #<=> RootVal #/\ NBE,
-        SNBE #<=> (TR #/\ NBE) #\ SNOE,
-        findall(Tuple, labeling([],Tuple), Extension).
+%% The above case analysis is based on the following constraints.
+% root_value_extension(Extension) :-
+%         Tuple = [ModifyToralElement,RootVal,NOE,NBE,TR],
+%         SNOE #<=> ModifyToralElement #/\ NOE,
+%         SNBE #<=> RootVal #/\ NBE,
+%         SNBE #<=> (TR #/\ NBE) #\ SNOE,
+%         findall(Tuple, labeling([],Tuple), Extension).
 
 nilp_on_element(_, _, NilpIndex, Index, NilpOnElementEntry ) :-
         NilpIndex = Index, !,
         NilpOnElementEntry = 0.
 nilp_on_element(NilpRow, NewBasisElement, NilpIndex, Index, NilpOnElementEntry ) :-
-        % NilpRow can be nonground
+        % NilpRow is ALWAYS ground
         % NewBasisElement can be nonground
         NewIndex is xor(NilpIndex, Index),
         fast_nth1( NewIndex, NewBasisElement, V),
         fast_nth1( NewIndex, NilpRow, NilpOnElementEntry0 ),
-        NilpOnElementEntry #<=> NilpOnElementEntry0 #/\ V.
+        (NilpOnElementEntry0 = 0 -> NilpOnElementEntry = 0 ; NilpOnElementEntry = V).
 
 %% Given the new thin basis NewBasis calculate its thin table
 make_new_table( Indices, Pairs, Table, NewBasis, NewTable ) :-
@@ -700,19 +725,28 @@ get_min_from_comp( Tables, Comp, MinTable ) :-
 
 %% Code used in symmetry breaking and lexicographically reducing tables
 %% Make a permutation of rows based on an element of gl_n acting on the simple roots
-make_perm(Roots,Powers, Mat, RowPerm ) :-
-        maplist( perm_it(Powers, Mat), Roots, RowPerm ).
+fast_make_perm(Roots,Powers, Mat, RowPerm ) :-
+        (   foreach(Root,Roots),
+            foreach(Perm,RowPerm),
+            param(Powers,Mat)
+        do  (   foreach(Power,Powers),
+                foreach(Row,Mat),
+                fromto(0,Perm1,Perm2,Perm),
+                param(Root)
+            do  (   foreach(Elt,Row),
+                    foreach(Roo,Root),
+                    fromto(0,Mod0,Mod1,Mod2)
+                do  Mod1 is xor(Mod0,Elt/\Roo)
+                ),
+                Perm2 is Perm1 + Power*Mod2
+            )
+        ).
 
-perm_it(Powers, Mat, Root, Entry ) :-
-        act_mat(Mat, Root, RootOut),
-        bin_2_dec(Powers, RootOut, Entry).
-
-%% Apply a permutation
-permute_rows(Rows, PermIndex, NewRow ) :-
-        nth1( PermIndex, Rows, NewRow).
 
 %% The predicate can_permute_dispatcher checks if Table1 can be permuted in to Table2
 %% This is used in both lex reducing and toral switching
+can_permute_dispatcher( _, _, _, _, Table1, Table2 ) :-
+        Table1 = Table2, !.
 can_permute_dispatcher( N, Roots, Powers, SortedRowSums, Table1, Table2 ) :-
         length( Mat, N ),
         maplist(same_length(Mat), Mat),
@@ -722,15 +756,15 @@ can_permute( N, Roots, Powers, T1, T2, Mat, SortedRowSums ) :-
         length( Mat, N ),
         append( Mat, Ms),
         domain( Ms, 0, 1),
+        fast_transpose(NewRows, TNewRows),
                                 % Use the row sums of T1 and T2 to crete constraints on which rows of T1 are
                                 % mapped to which rows of T2
         partition_by_row_sums( T1, SortedRowSums, Partition1 ),
         partition_by_row_sums( T2, SortedRowSums, Partition2 ),
         maplist( map_partitions(N, Mat, Powers), Partition1, Partition2 ),
-        make_perm( Roots, Powers, Mat, RowPerm ),
-        maplist(permute_rows(T2), RowPerm, NewRows ),
-        transpose(NewRows, TNewRows),
-        maplist(permute_rows(TNewRows), RowPerm, T1 ).
+        labeling([], Ms),
+        fast_make_perm( Roots, Powers, Mat, RowPerm ),
+        permute_matrix(RowPerm, T2, NewRows, TNewRows, T1).
 
 map_partitions( Rank, Mat, _, [N1], [N2] ) :- !,
         dec_2_bin( Rank, N1, B1 ),
@@ -785,14 +819,19 @@ my_max( A, B, C ) :-
 preprocess(N) :-
         abolish(fast_nth1/3, [force(true)]),
         tell('/tmp/fast_nth1.pl'),
-        M is 2^N,
-        portray_clause((fast_nth1(J,_,_) :- integer(J), J>M, throw(out_of_range(J)))),
+        M is 2^N-1,
+        % portray_clause((fast_nth1(J,_,_) :- integer(J), J>M, throw(out_of_range(J)))),
         (   for(I,1,M)
         do  (nth1(I, Pat, X) -> true),
             portray_clause(fast_nth1(I, Pat, X))
         ),
         told,
-        compile('/tmp/fast_nth1.pl').
+        compile('/tmp/fast_nth1.pl'),
+        length(Rows, M),
+        maplist(same_length(Rows),Rows),
+        transpose(Rows, Transpose),
+        abolish(fast_transpose/2, [force(true)]),
+        assertz(fast_transpose(Rows, Transpose)).        
 
 get_value( Row, Index, Value ) :-
         nth1( Index, Row, Value).
@@ -847,6 +886,17 @@ get_roots(N, Roots) :-
         ).
 
 %% Mat acting on VecIn gives VecOut
+% This version is too slow.
+% act_mat(Mat, VecIn, VecOut) :-
+%         (   foreach(Mi,Mat),
+%             foreach(X,VecOut),
+%             param(VecIn)
+%         do  (   foreach(Vj,VecIn),
+%                 foreach(Mij,Mi),
+%                 fromto(0,X1,X2,X)
+%             do  X2 #<=> (Vj #/\ Mij) #\ X1
+%             )
+%         ).
 act_mat(Mat, VecIn, VecOut) :- % NB VecIn cannot have variables, but Mat can
         maplist( my_scalar_prod( VecIn ), Mat, VecOut).
 
@@ -902,3 +952,44 @@ maplist(Pred, Ws, Xs, Ys, Zs) :-
         do call(Pred, W, X, Y, Z)
         ).
 
+
+pp(Table) :-
+        maplist(sumlist, Table, Sums),
+        format('Primary table, rowsums = ~w:\n\n', [Sums]),
+        pp_table(Table).
+        % warp_table(Table, XTable),
+        % maplist(sumlist, XTable, XSums),
+        % format('Warped table, rowsums = ~w:\n\n', [XSums]),
+        % pp_table(XTable).
+        % rows_edges(Table, Vertices, Edges, []),
+        % vertices_edges_to_ugraph(Vertices, Edges, Digraph),
+        % reduce(Digraph, Reduced),
+        % write('Digraph:\n\n'),
+        % pp_table(Digraph),
+        % write('Reduced digraph:\n\n'),
+        % pp_table(Reduced).
+
+warp_table(Table, XTable) :-
+        (   foreach(Row,Table),
+            foreach(XRow,XTable),
+            count(I,1,_)
+        do  warp_row(Row, I, XRow)
+        ).
+
+warp_row(Row, I, XRow) :-
+        (   foreach(E,Row),
+            foreach(IJ-E,KL1),
+            foreach(_-X,KL2),
+            foreach(X,XRow),
+            count(J,1,_),
+            param(I)
+        do  (I = J -> IJ = I ; IJ is xor(I,J))
+        ),
+        keysort(KL1, KL2).
+
+pp_table(Rows) :-
+        (   foreach(Row,Rows),
+            fromto('   [ ',Prefix,'   , ',_)
+        do  format('~w~w\n', [Prefix,Row])
+        ),
+        format('   ]\n\n', []).
