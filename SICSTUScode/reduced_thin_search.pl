@@ -1,6 +1,5 @@
 :-use_module(library(clpfd) ).
 :-use_module(library(lists)).
-:-use_module(library(samsort)).
 :-use_module(library(ordsets)).
 :-use_module(library(ugraphs)).
 :-use_module(library(between)).
@@ -450,8 +449,7 @@ lex_reduce( _, _, _, List, Mins, ReducedList) :-
         append( Mins, List, ReducedList ).
 lex_reduce( N, Roots, Powers, List, Mins, ReducedList) :-
         min_member(MinTable, List ),
-        sorted_row_sums( MinTable, SortedRowSums ),
-        exclude( can_permute_dispatcher( N, Roots, Powers, SortedRowSums, MinTable), List, NewList ),
+        exclude( can_permute_dispatcher( N, Roots, Powers, MinTable), List, NewList ),
         append( Mins, [MinTable], NewMins ),
         lex_reduce( N, Roots, Powers, NewList, NewMins, ReducedList).
 
@@ -656,7 +654,6 @@ canonical_order_rows0( N, Roots, Powers, SimpleTablesWithSums, Tables, OrderedTa
 
 canonical_order_rows( N, Roots, Powers, SimpleTablesWithSums, Rows, OrderedRows) :-
         full_sorted_row_sums( Rows, RowSums),
-        sort( RowSums, SortedRowSums),
         (   foreach(TableWithSums, SimpleTablesWithSums),
             fromto(SimpleTables,SimpleTables1,SimpleTables2,[]),
             param(RowSums)
@@ -665,11 +662,11 @@ canonical_order_rows( N, Roots, Powers, SimpleTablesWithSums, Rows, OrderedRows)
             ;   SimpleTables1 = SimpleTables2
             )
         ),
-        first_sol( lex_reduce_to_simple( N, Roots, Powers, Rows, SortedRowSums ),
+        first_sol( lex_reduce_to_simple( N, Roots, Powers, Rows ),
                    SimpleTables, OrderedRows ).
 
-lex_reduce_to_simple( N, Roots, Powers, Rows, SortedRowSums, Table ) :-
-        can_permute_dispatcher( N, Roots, Powers, SortedRowSums, Rows, Table).
+lex_reduce_to_simple( N, Roots, Powers, Rows, Table ) :-
+        can_permute_dispatcher( N, Roots, Powers, Rows, Table).
 
 %% Make the toral switching graph
 %% If a table T1 switches to T2 then T2 might not have switched to T1
@@ -745,22 +742,22 @@ fast_make_perm(Roots,Powers, Mat, RowPerm ) :-
 
 %% The predicate can_permute_dispatcher checks if Table1 can be permuted in to Table2
 %% This is used in both lex reducing and toral switching
-can_permute_dispatcher( _, _, _, _, Table1, Table2 ) :-
+can_permute_dispatcher( _, _, _, Table1, Table2 ) :-
         Table1 = Table2, !.
-can_permute_dispatcher( N, Roots, Powers, SortedRowSums, Table1, Table2 ) :-
+can_permute_dispatcher( N, Roots, Powers, Table1, Table2 ) :-
         length( Mat, N ),
         maplist(same_length(Mat), Mat),
-        once(can_permute( N, Roots, Powers, Table1, Table2, Mat, SortedRowSums ) ).
+        once(can_permute( N, Roots, Powers, Table1, Table2, Mat ) ).
 
-can_permute( N, Roots, Powers, T1, T2, Mat, SortedRowSums ) :-
+can_permute( N, Roots, Powers, T1, T2, Mat ) :-
         length( Mat, N ),
         append( Mat, Ms),
         domain( Ms, 0, 1),
         fast_transpose(NewRows, TNewRows),
-                                % Use the row sums of T1 and T2 to crete constraints on which rows of T1 are
+                                % Use the row sums of T1 and T2 to create constraints on which rows of T1 are
                                 % mapped to which rows of T2
-        partition_by_row_sums( T1, SortedRowSums, Partition1 ),
-        partition_by_row_sums( T2, SortedRowSums, Partition2 ),
+        partition_by_row_sums( T1, Partition1 ),
+        partition_by_row_sums( T2, Partition2 ),
         maplist( map_partitions(N, Mat, Powers), Partition1, Partition2 ),
         labeling([], Ms),
         fast_make_perm( Roots, Powers, Mat, RowPerm ),
@@ -779,26 +776,28 @@ set_range( Mat, Powers, Range, B1 ) :-
         bin_2_dec( Powers, B2, D ),
         element(Range, D ).
 
-partition_by_row_sums( Mat, SortedRowSums, Partition ) :-
-        maplist( has_row_sum(Mat), SortedRowSums, Partition ).
+partition_by_row_sums( Mat, Partition ) :-
+        (   foreach(Row,Mat),
+            foreach(Sum-I,KL1),
+            count(I,1,_)
+        do  sumlist(Row, Sum)
+        ),
+        keysort(KL1, KL2),
+        keyclumped(KL2, KL3),
+        keys_and_values(KL3, _, Partition).
 
-has_row_sum( Mat, S, L ) :-
-        (   foreach(R,Mat),
-            count(I,1,_),
-            fromto(L,L1,L2,[]),
-            param(S)
-        do  (sumlist(R, S) -> L1 = [I|L2] ; L1 = L2)
-        ).
-
-%% row sums with no repeats
-sorted_row_sums( M, Sorted ) :-
-        maplist( sumlist, M, Sums ),
-        sort( Sums, Sorted ).
-
-%% row sums including repeats. Sicstus needs samsort importing
+%% Multiset of row sums.
+% full_sorted_row_sums( M, Sorted ) :-
+%         maplist( sumlist, M, Sums ),
+%         samsort( Sums, Sorted ).
 full_sorted_row_sums( M, Sorted ) :-
-        maplist( sumlist, M, Sums ),
-        samsort( Sums, Sorted ).
+        (   foreach(Row,M),
+            foreach(Sum1-1,KL1),
+            foreach(Sum2-1,KL2),
+            foreach(Sum2,Sorted)
+        do  sumlist(Row, Sum1)
+        ),
+        keysort(KL1, KL2).
 %%%%%%
 %%%%%%
 
