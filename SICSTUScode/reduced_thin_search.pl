@@ -80,11 +80,49 @@ reduced_thin_search( N, ThinTables ) :-
 %%% 1. INITIAL THIN SEARCH %%%
 
 thin_table(N, Rows) :-
-        thin_search( Vs, N, Rows, Succs),
-        labeling( [], Vs),
-        (labeling([], Succs) -> true).
+        thin_search( N, Rows),
+        mylabeling(Rows).
 
-thin_search( Vs, N, Rows, Succs) :-
+%% The idea:
+%% 1. Partition each Ith row into two parts:
+%%    part 1 corresponds to indices J such that J < xor(I,J)
+%%    part 2 corresponds to indices xor(I,J) such that J < xor(I,J)
+%% 2. For each row, label first part 1, then part 2.
+mylabeling(Mat1) :-
+        part_matrix(Mat1, Mat2, Mat3),
+        (   foreach(Row2,Mat2),
+            foreach(Row3,Mat3),
+            foreach(Row23,Mat23)
+        do  append(Row2, Row3, Row23)
+        ),
+        append(Mat23, Vs),
+        labeling([], Vs).
+
+part_matrix(Mat1, Mat2, Mat3) :-
+        (   foreach(Row1,Mat1),
+            foreach(Row2,Mat2),
+            foreach(Row3,Mat3),
+            count(I,1,_)
+        do  (   foreach(_,Row1),
+                fromto(KL1,KL2,KL3,[]),
+                count(J,1,_),
+                param(I)
+            do  (   I = J -> KL2 = KL3
+                ;   J > xor(I,J) -> KL2 = KL3
+                ;   K is xor(I,J),
+                    KL2 = [J-K|KL3]
+                )
+            ),
+            (   foreach(J2-K2,KL1),
+                foreach(X,Row2),
+                foreach(Y,Row3),
+                param(Row1)
+            do  fast_nth1(J2, Row1, X),
+                fast_nth1(K2, Row1, Y)
+            )
+        ).
+
+thin_search( N, Rows) :-
         M is 2^N-1,
         length(Rows, M),
         numlist(M, Indices),
@@ -98,17 +136,7 @@ thin_search( Vs, N, Rows, Succs) :-
         jacobi_identity_full( Indices, Rows), % Lie Bracket constraint PAYS OFF
         break_gl2_symmetries( Vs, Rows, N ), % Symmetry breaking constraints PAYS OFF
         maplist(number_of_ones(N), Rows), % Implied constraint
-        maplist(lemma_2_12(N, Indices), Indices, Rows), % Implied constraint PAYS OFF
-        % strongly_connected(Rows, Succs), % Alas, too slow
-        Succs = [].
-
-% strongly_connected(Rows, Succs) :-
-%         warp_table(Rows, WRows),
-%         (   foreach(WRow,WRows),
-%             foreach(Succ,Succs)
-%         do  element(Succ, WRow, 1)
-%         ),
-%         circuit(Succs).
+        maplist(lemma_2_12(N, Indices), Indices, Rows). % Implied constraint PAYS OFF
 
 number_of_ones(N, Row) :-
         (   N = 3 -> Dom = {3,4,5}
@@ -121,20 +149,21 @@ number_of_ones(N, Row) :-
         sum(Row, #=, S).
 
 lemma_2_12(N, Indices, I, Row) :-
-        Pow1 is 2^(N-1),
         (   foreach(J,Indices),
             foreach(MJ,Row),
             fromto(A2,A3,A4,[]),
             param(I,Row)
         do  (   I = J -> A3 = A4
-            ;   IJ is xor(I,J),
-                fast_nth1(IJ, Row, MIJ),
-                X #<=> MJ #/\ MIJ,
+            ;   J > xor(I,J) -> A3 = A4
+            ;   K is xor(I,J),
+                fast_nth1(K, Row, MK),
+                X #= MJ * MK,
                 A3 = [X|A4]
             )
         ),
         sum(A2, #=, S),
-        (N =< 5 -> S in {0,Pow1} ; S in {0} \/ (18..Pow1)).
+        Pow1 is 2^(N-2),
+        (N =< 5 -> S in {0,Pow1} ; S in {0} \/ (9..Pow1)).
 
 %% The Jacobi Identity
 jacobi_identity_full( Indices, Rows) :-
@@ -142,10 +171,6 @@ jacobi_identity_full( Indices, Rows) :-
         maplist( jacobi_identity( Rows ), Triples, Tuples ),
         gen_jacobi_extension(Extension),
         table(Tuples, Extension).
-% jacobi_identity_full( Indices, Rows) :-
-%         jacobi_triples(Indices, Triples, []),
-%         maplist( jacobi_identity( Rows ), Triples, Tuples ),
-%         maplist( jacobi_subtuple, Tuples ).
 
 jacobi_triples(Indices) -->
         (   foreach(A,Indices),
@@ -455,7 +480,7 @@ lex_reduce( N, Roots, Powers, List, Mins, ReducedList) :-
 
 %% Calculate row sums and partition with respect to row sums
 populate_row_sum_tables_list( SimpleTables, TablesList ) :-
-        maplist( full_sorted_row_sums, SimpleTables, TooManyRowSums ),
+        maplist( multiset_of_row_sums, SimpleTables, TooManyRowSums ),
         list_to_ord_set( TooManyRowSums, RowSumsList ),
         maplist( filter_by_row_sum(SimpleTables), RowSumsList, TablesList ).
 
@@ -463,7 +488,7 @@ filter_by_row_sum( SimpleTables, RowSums, Tables ) :-
         (   foreach(Table,SimpleTables),
             fromto(Tables,T1,T2,[]),
             param(RowSums)
-        do  (   full_sorted_row_sums( Table, RowSums ) -> T1 = [Table|T2] ; T1 = T2   )
+        do  (   multiset_of_row_sums( Table, RowSums ) -> T1 = [Table|T2] ; T1 = T2   )
         ).
 %%%%%%
 
@@ -645,7 +670,7 @@ canonical_order_tables_list( N, Roots, Powers, Tables, SwitchedTablesList,
 
 make_table_row_sum_pair( Table, [X, Y] ) :-
         X = Table,
-        full_sorted_row_sums( Table, Y ).
+        multiset_of_row_sums( Table, Y ).
 
 canonical_order_rows0( _, _, _, _, [], []) :- !.
 canonical_order_rows0( N, Roots, Powers, SimpleTablesWithSums, Tables, OrderedTables) :-
@@ -653,7 +678,7 @@ canonical_order_rows0( N, Roots, Powers, SimpleTablesWithSums, Tables, OrderedTa
                 OrderedTables).
 
 canonical_order_rows( N, Roots, Powers, SimpleTablesWithSums, Rows, OrderedRows) :-
-        full_sorted_row_sums( Rows, RowSums),
+        multiset_of_row_sums( Rows, RowSums),
         (   foreach(TableWithSums, SimpleTablesWithSums),
             fromto(SimpleTables,SimpleTables1,SimpleTables2,[]),
             param(RowSums)
@@ -787,10 +812,10 @@ partition_by_row_sums( Mat, Partition ) :-
         keys_and_values(KL3, _, Partition).
 
 %% Multiset of row sums.
-% full_sorted_row_sums( M, Sorted ) :-
+% multiset_of_row_sums( M, Sorted ) :-
 %         maplist( sumlist, M, Sums ),
 %         samsort( Sums, Sorted ).
-full_sorted_row_sums( M, Sorted ) :-
+multiset_of_row_sums( M, Sorted ) :-
         (   foreach(Row,M),
             foreach(Sum1-1,KL1),
             foreach(Sum2-1,KL2),
