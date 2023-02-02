@@ -56,7 +56,7 @@
 % An example prompt to run the main predicate is
 % ['ThinSymmetrySicstus.pl'].
 % reduced_thin_search(4, ThinTables), maplist( writeln, ThinTables).
-
+        
 %%% 0. THE MAIN PREDICATE %%%
 
 reduced_thin_search( N, ThinTables ) :-
@@ -80,23 +80,39 @@ reduced_thin_search( N, ThinTables ) :-
 %%% 1. INITIAL THIN SEARCH %%%
 
 thin_table(N, Rows) :-
-        thin_search( N, Rows),
-        mylabeling(Rows).
+        thin_search( N, Rows, Part1, Part2, _Sums),
+        mylabeling(Part1, Part2).
 
 %% The idea:
 %% 1. Partition each Ith row into two parts:
 %%    part 1 corresponds to indices J such that J < xor(I,J)
 %%    part 2 corresponds to indices xor(I,J) such that J < xor(I,J)
 %% 2. For each row, label first part 1, then part 2.
-mylabeling(Mat1) :-
-        part_matrix(Mat1, Mat2, Mat3),
-        (   foreach(Row2,Mat2),
-            foreach(Row3,Mat3),
-            foreach(Row23,Mat23)
-        do  append(Row2, Row3, Row23)
+mylabeling(Part1, Part2) :-
+        (   foreach(Row1,Part1),
+            foreach(Row2,Part2),
+            foreach(Row12,Part12)
+        do  append(Row1, Row2, Row12)
         ),
-        append(Mat23, Vs),
+        append(Part12, Vs),
         labeling([], Vs).
+
+thin_search( N, Rows, Part1, Part2, Sums) :-
+        M is 2^N-1,
+        length(Rows, M),
+        numlist(M, Indices),
+        maplist(same_length(Rows),Rows),
+        part_matrix(Rows, Part1, Part2),
+        maplist( set_value_to_zero, Indices, Rows), % Lie Bracket constraint
+        fast_transpose(Rows, Rows),  % Lie Bracket constraint
+        append(Rows, Vs),
+        domain( Vs, 0, 1),
+        stop_certain_ideals(Rows,Indices), % Simplicity constraints ESSENTIAL
+        act_faithfully(Rows,Indices),      % Simplicity constraints QUESTIONABLE, 2.5% fewer backtracks
+        jacobi_identity_full( Indices, Rows), % Lie Bracket constraint PAYS OFF
+        break_gl2_symmetries( Vs, Rows, N ), % Symmetry breaking constraints PAYS OFF
+        maplist(number_of_ones(N), Rows, Sums), % Implied constraint
+        maplist(lemma_2_12(N, Indices), Indices, Rows). % Implied constraint PAYS OFF
 
 part_matrix(Mat1, Mat2, Mat3) :-
         (   foreach(Row1,Mat1),
@@ -122,28 +138,13 @@ part_matrix(Mat1, Mat2, Mat3) :-
             )
         ).
 
-thin_search( N, Rows) :-
-        M is 2^N-1,
-        length(Rows, M),
-        numlist(M, Indices),
-        maplist(same_length(Rows),Rows),
-        append(Rows, Vs),
-        maplist( set_value_to_zero, Indices, Rows), % Lie Bracket constraint
-        fast_transpose(Rows, Rows),  % Lie Bracket constraint
-        domain( Vs, 0, 1),
-        stop_certain_ideals(Rows,Indices), % Simplicity constraints ESSENTIAL
-        act_faithfully(Rows,Indices),      % Simplicity constraints QUESTIONABLE, 2.5% fewer backtracks
-        jacobi_identity_full( Indices, Rows), % Lie Bracket constraint PAYS OFF
-        break_gl2_symmetries( Vs, Rows, N ), % Symmetry breaking constraints PAYS OFF
-        maplist(number_of_ones(N), Rows), % Implied constraint
-        maplist(lemma_2_12(N, Indices), Indices, Rows). % Implied constraint PAYS OFF
-
-number_of_ones(N, Row) :-
-        (   N = 3 -> Dom = {3,4,5}
-        ;   N = 4 -> Dom = {4,6,7,8,10,11}
-        ;   N = 5 -> Dom = {5,8,9,12,14,15,16,20,23}
+number_of_ones(N, Row, S) :-
+        (   N = 3 -> Dom = {3,4,5} % verified
+        ;   N = 4 -> Dom = {4,6,7,8,10,11} % verified
+        ;   N = 5 -> Dom = {5,8,9,12,14,15,16,20,23} % verified
+      % ;   N = 6 -> Dom = {6}\/(10..11)\/{16}\/{18}\/{24}\/{28}\/(31..32)\/{40}\/{47} % conjecture
         ;   true  -> Max is 2^(N-1) + 2^(N-2) - 1,
-                     Dom = (1..Max)
+                     Dom = (N..Max)
         ),
         S in Dom,
         sum(Row, #=, S).
