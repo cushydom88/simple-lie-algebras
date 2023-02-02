@@ -100,19 +100,23 @@ mylabeling(Part1, Part2) :-
         labeling([], Vs).
 
 thin_search( N, Rows, Part1, Part2, Sums) :-
+        thin_search_essential( N, Rows, Part1, Part2, Sums, Indices, Vs),
+        stop_certain_ideals(Rows, Indices), % Simplicity constraints ESSENTIAL
+        act_faithfully(Rows, Indices),      % Simplicity constraints QUESTIONABLE, 2.5% fewer backtracks
+        jacobi_identity_full( Indices, Rows), % Lie Bracket constraint PAYS OFF
+        break_gl2_symmetries( Vs, Rows, N ), % Symmetry breaking constraints PAYS OFF
+        true.
+
+thin_search_essential( N, Rows, Part1, Part2, Sums, Indices, Vs) :-
         M is 2^N-1,
         length(Rows, M),
         numlist(M, Indices),
-        maplist(same_length(Rows),Rows),
+        maplist(lambda_21(length, M), Rows),
         part_matrix(Rows, Part1, Part2),
         maplist( set_value_to_zero, Indices, Rows), % Lie Bracket constraint
         fast_transpose(Rows, Rows),  % Lie Bracket constraint
         append(Rows, Vs),
         domain( Vs, 0, 1),
-        stop_certain_ideals(Rows,Indices), % Simplicity constraints ESSENTIAL
-        act_faithfully(Rows,Indices),      % Simplicity constraints QUESTIONABLE, 2.5% fewer backtracks
-        jacobi_identity_full( Indices, Rows), % Lie Bracket constraint PAYS OFF
-        break_gl2_symmetries( Vs, Rows, N ), % Symmetry breaking constraints PAYS OFF
         maplist(number_of_ones(N), Rows, Sums), % Implied constraint
         maplist(lemma_2_12(N, Indices), Indices, Rows, Sums). % Implied constraint PAYS OFF
 
@@ -628,8 +632,9 @@ nilp_on_element(NilpRow, NewBasisElement, NilpIndex, Index, NilpOnElementEntry )
 make_new_table( Indices, Pairs, Table, NewBasis, NewTable ) :-
         maplist( set_diagonal( NewTable ), Indices ),
         maplist( intify_basis(Indices), NewBasis, IntBasis ),
-        same_length( Table, NewTable ),
-        maplist( same_length(NewTable), NewTable ),
+        length(Table, M),
+        length(NewTable, M),
+        maplist(lambda_21(length, M), NewTable),
         maplist( make_new_table_entry( Indices, Table, IntBasis, NewTable ), Pairs ).
 
 make_new_table_entry( _Indices, Table, IntBasis, NewTable, [I1, I2] ) :-
@@ -654,10 +659,7 @@ filtered_pairs(Ints1, Ints2, [MainInt|_]) -->
         ).
 
 intify_basis( Indices, BasisRow, Ints ) :-
-        include( intify_basis_helper(BasisRow), Indices, Ints ).
-
-intify_basis_helper( BasisRow, I ) :-
-        fast_nth1( I, BasisRow, 1 ).
+        include(lambda_312(fast_nth1, BasisRow, 1), Indices, Ints).
 
 set_diagonal( NewTable, I ) :-
         get_entry( NewTable, [I,I], 0 ).
@@ -772,7 +774,7 @@ can_permute_dispatcher( _, _, _, Table1, Table2 ) :-
         Table1 = Table2, !.
 can_permute_dispatcher( N, Roots, Powers, Table1, Table2 ) :-
         length( Mat, N ),
-        maplist(same_length(Mat), Mat),
+        maplist(lambda_21(length, N), Mat),
         once(can_permute( N, Roots, Powers, Table1, Table2, Mat ) ).
 
 can_permute( N, Roots, Powers, T1, T2, Mat ) :-
@@ -812,10 +814,6 @@ partition_by_row_sums( Mat, Partition ) :-
         keyclumped(KL2, KL3),
         keys_and_values(KL3, _, Partition).
 
-%% Multiset of row sums.
-% multiset_of_row_sums( M, Sorted ) :-
-%         maplist( sumlist, M, Sums ),
-%         samsort( Sums, Sorted ).
 multiset_of_row_sums( M, Sorted ) :-
         (   foreach(Row,M),
             foreach(Sum1-1,KL1),
@@ -853,16 +851,13 @@ preprocess(N) :-
         told,
         compile('/tmp/fast_nth1.pl'),
         length(Rows, M),
-        maplist(same_length(Rows),Rows),
+        maplist(lambda_21(length, M), Rows),
         transpose(Rows, Transpose),
         abolish(fast_transpose/2, [force(true)]),
-        assertz(fast_transpose(Rows, Transpose)).        
-
-get_value( Row, Index, Value ) :-
-        nth1( Index, Row, Value).
+        assertz(fast_transpose(Rows, Transpose)).
 
 get_values( Row, Indices, Values ) :-
-        maplist( get_value(Row), Indices, Values ).
+        maplist(lambda_213(nth1, Row), Indices, Values).
 
 get_entry( Rows, [RowIndex, ColIndex], Entry ) :-
         fast_nth1( RowIndex, Rows, Row),
@@ -976,6 +971,15 @@ maplist(Pred, Ws, Xs, Ys, Zs) :-
             param(Pred)
         do call(Pred, W, X, Y, Z)
         ).
+
+lambda_21(F, X, Y) :-
+        call(F, Y, X).
+
+lambda_213(F, X, Y, Z) :-
+        call(F, Y, X, Z).
+
+lambda_312(F, X, Y, Z) :-
+        call(F, Z, X, Y).
 
 
 pp(Table) :-
