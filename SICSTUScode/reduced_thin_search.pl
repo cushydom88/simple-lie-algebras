@@ -61,10 +61,12 @@
 
 reduced_thin_search( N, ThinTables ) :-
         preprocess(N),
+        fd_statistics(backtracks, _),
         statistics(runtime, _),
         findall( Rows, thin_table(N,Rows), FirstTables ),
         statistics(runtime, [_,T1]),
-        length(FirstTables, N1), print_message(informational, format('~w FirstTables in ~w ms',[N1,T1])),
+        fd_statistics(backtracks, B1),
+        length(FirstTables, N1), print_message(informational, format('~w FirstTables in ~w ms, ~w backtracks',[N1,T1,B1])),
         remove_non_simple_tables( FirstTables, SimpleTables ),
         statistics(runtime, [_,T2]),
         length(SimpleTables, N2), print_message(informational, format('~w SimpleTables in ~w ms',[N2,T2])),
@@ -112,7 +114,7 @@ thin_search( N, Rows, Part1, Part2, Sums) :-
         jacobi_identity_full( Indices, Rows), % Lie Bracket constraint PAYS OFF
         break_gl2_symmetries( Vs, Rows, N ), % Symmetry breaking constraints PAYS OFF
         maplist(number_of_ones(N), Rows, Sums), % Implied constraint
-        maplist(lemma_2_12(N, Indices), Indices, Rows). % Implied constraint PAYS OFF
+        maplist(lemma_2_12(N, Indices), Indices, Rows, Sums). % Implied constraint PAYS OFF
 
 part_matrix(Mat1, Mat2, Mat3) :-
         (   foreach(Row1,Mat1),
@@ -149,7 +151,7 @@ number_of_ones(N, Row, S) :-
         S in Dom,
         sum(Row, #=, S).
 
-lemma_2_12(N, Indices, I, Row) :-
+lemma_2_12(N, Indices, I, Row, Sum) :-
         (   foreach(J,Indices),
             foreach(MJ,Row),
             fromto(A2,A3,A4,[]),
@@ -163,6 +165,7 @@ lemma_2_12(N, Indices, I, Row) :-
             )
         ),
         sum(A2, #=, S),
+        2*S #=< Sum,
         Pow1 is 2^(N-2),
         (N =< 5 -> S in {0,Pow1} ; S in {0} \/ (9..Pow1)).
 
@@ -481,16 +484,13 @@ lex_reduce( N, Roots, Powers, List, Mins, ReducedList) :-
 
 %% Calculate row sums and partition with respect to row sums
 populate_row_sum_tables_list( SimpleTables, TablesList ) :-
-        maplist( multiset_of_row_sums, SimpleTables, TooManyRowSums ),
-        list_to_ord_set( TooManyRowSums, RowSumsList ),
-        maplist( filter_by_row_sum(SimpleTables), RowSumsList, TablesList ).
-
-filter_by_row_sum( SimpleTables, RowSums, Tables ) :-
-        (   foreach(Table,SimpleTables),
-            fromto(Tables,T1,T2,[]),
-            param(RowSums)
-        do  (   multiset_of_row_sums( Table, RowSums ) -> T1 = [Table|T2] ; T1 = T2   )
-        ).
+        (   foreach(SimpleTable,SimpleTables),
+            foreach(MS-SimpleTable,KL1)
+        do  multiset_of_row_sums(SimpleTable, MS)
+        ),
+        keysort(KL1, KL2),
+        keyclumped(KL2, KL3),
+        keys_and_values(KL3, _, TablesList).
 %%%%%%
 
 %%% 4. TORAL SWITCHING %%%
