@@ -82,7 +82,7 @@ reduced_thin_search( N, ThinTables ) :-
 %%% 1. INITIAL THIN SEARCH %%%
 
 thin_table(N, Rows) :-
-        thin_search( N, Rows, Part1, Part2, _Sums),
+        thin_search( N, Rows, Part1, Part2, _Sums, _NPairs),
         mylabeling(Part1, Part2).
 
 %% The idea:
@@ -99,15 +99,19 @@ mylabeling(Part1, Part2) :-
         append(Part12, Vs),
         labeling([], Vs).
 
-thin_search( N, Rows, Part1, Part2, Sums) :-
-        thin_search_essential( N, Rows, Part1, Part2, Sums, Indices, Vs),
+thin_search( N, Rows, Part1, Part2, Sums, NPairs) :-
+        thin_search_essential( N, Rows, Part1, Part2, Sums, NPairs, Indices, Vs),
         stop_certain_ideals(Rows, Indices), % Simplicity constraints ESSENTIAL
         act_faithfully(Rows, Indices),      % Simplicity constraints QUESTIONABLE, 2.5% fewer backtracks
         jacobi_identity_full( Indices, Rows), % Lie Bracket constraint PAYS OFF
         break_gl2_symmetries( Vs, Rows, N ), % Symmetry breaking constraints PAYS OFF
-        true.
+        Rows = [R1|R2etc],
+        (   foreach(R2,R2etc),
+            param(R1)
+        do  lex_chain([R1, R2])
+        ).
 
-thin_search_essential( N, Rows, Part1, Part2, Sums, Indices, Vs) :-
+thin_search_essential( N, Rows, Part1, Part2, Sums, NPairs, Indices, Vs) :-
         M is 2^N-1,
         length(Rows, M),
         numlist(M, Indices),
@@ -118,7 +122,7 @@ thin_search_essential( N, Rows, Part1, Part2, Sums, Indices, Vs) :-
         append(Rows, Vs),
         domain( Vs, 0, 1),
         maplist(number_of_ones(N), Rows, Sums), % Implied constraint
-        maplist(lemma_2_12(N, Indices), Indices, Rows, Sums). % Implied constraint PAYS OFF
+        maplist(lemma_2_12(N), Part1, Part2, Sums, NPairs). % Implied constraint PAYS OFF
 
 part_matrix(Mat1, Mat2, Mat3) :-
         (   foreach(Row1,Mat1),
@@ -155,23 +159,18 @@ number_of_ones(N, Row, S) :-
         S in Dom,
         sum(Row, #=, S).
 
-lemma_2_12(N, Indices, I, Row, Sum) :-
-        (   foreach(J,Indices),
-            foreach(MJ,Row),
-            fromto(A2,A3,A4,[]),
-            param(I,Row)
-        do  (   I = J -> A3 = A4
-            ;   J > xor(I,J) -> A3 = A4
-            ;   K is xor(I,J),
-                fast_nth1(K, Row, MK),
-                X #= MJ * MK,
-                A3 = [X|A4]
-            )
+lemma_2_12(N, Part1, Part2, Sum, NPair) :-
+        (   foreach(P1,Part1),
+            foreach(P2,Part2),
+            foreach(P3,Part3)
+        do  P3 #= P1 * P2
         ),
-        sum(A2, #=, S),
-        2*S #=< Sum,
         Pow1 is 2^(N-2),
-        (N =< 5 -> S in {0,Pow1} ; S in {0} \/ (9..Pow1)).
+        (N =< 5 -> NPair in {0,Pow1} ; NPair in {0} \/ (9..Pow1)),
+        sum(Part3, #=, NPair),
+        sum(Part1, #>=, NPair),
+        sum(Part2, #>=, NPair),
+        2*NPair #=< Sum.
 
 %% The Jacobi Identity
 jacobi_identity_full( Indices, Rows) :-
