@@ -386,7 +386,8 @@ permute_matrix(RowPerm, Rows, NewRows, TNewRows, NewerRows) :-
         do  true
         ),
         keysort(KeyNewRows, KeyRows),
-        keysort(KeyNewerRows, KeyTNewRows).
+        keysort(KeyNewerRows, Tmp2), % can fail, but we don't want keysort/2 to do post-failure checks
+        Tmp2 = KeyTNewRows.
 
 %%%%%%
 
@@ -857,38 +858,47 @@ make_new_basis( Indices, Table, BaseTorus, NilpIndex, ModifyToralElementChecker,
                 NewBasisElement ) :-
         same_length( Table, NewBasisElement ),
         domain( NewBasisElement, 0, 1),
-        once( make_new_basis_helper( Indices, Table, BaseTorus, NilpIndex,
-                                     ModifyToralElementChecker, Root, NewBasisElement ) ),
-        labeling( [], NewBasisElement ). % FIXME: what about multiple solutions?
+        make_new_basis_helper( Indices, Table, BaseTorus, NilpIndex,
+                               ModifyToralElementChecker, Root, NewBasisElement ),
+        labeling( [], NewBasisElement ), !.
 
 make_new_basis_helper( Indices, Table, BaseTorus, NilpIndex, ModifyToralElementChecker,
                        Root, NewBasisElement ) :-
         at_least_one( NewBasisElement ),
-        maplist( apply_root_value( Indices, Table, NilpIndex, NewBasisElement), BaseTorus,
+        fast_nth1( NilpIndex, Table, NilpRow ),
+        maplist( nilp_on_element(NilpRow, NewBasisElement, NilpIndex), Indices,
+                 NilpOnElement ),
+        maplist( apply_root_value( NilpOnElement, NewBasisElement), BaseTorus,
                  ModifyToralElementChecker, Root ).
 
 %% Apply a new toral element on NewBasisElement and kill or stabalise it depending on RootVal
 %% NewBasisElement is determined by the constraints created here
-apply_root_value( Indices, Table, NilpIndex, NewBasisElement, ToralRow,
+apply_root_value( NilpOnElement, NewBasisElement, ToralRow,
                   ModifyToralElement, RootVal ) :- % COMMENT: ModifyToralElement, RootVal, TotalRow are 0/1
-        fast_nth1( NilpIndex, Table, NilpRow ),
-        maplist( nilp_on_element(NilpRow, NewBasisElement, NilpIndex), Indices,
-                 NilpOnElement ),
         (   foreach(NOE,NilpOnElement),
             foreach(NBE,NewBasisElement),
             foreach(TR,ToralRow),
             param(ModifyToralElement,RootVal)
-        do  Key = [ModifyToralElement,RootVal,TR],
-            (   Key = [0,0,0] ->  true
-            ;   Key = [0,0,1] ->  NBE = 0
-            ;   Key = [0,1,0] ->  NBE = 0
-            ;   Key = [0,1,1] ->  true
-            ;   Key = [1,0,0] ->  NOE = 0
-            ;   Key = [1,0,1] ->  NBE #= NOE
-            ;   Key = [1,1,0] ->  NBE #= NOE
-            ;   Key = [1,1,1] ->  NOE = 0
-            )
+        do  Key is 4*ModifyToralElement + 2*RootVal + 1*TR,
+            apply_root_value(Key, NOE, NBE)
         ).
+
+%%  Key = [0,0,0] ->  true
+apply_root_value(0, _, _).
+%%  Key = [0,0,1] ->  NBE = 0
+apply_root_value(1, _, 0).
+%%  Key = [0,1,0] ->  NBE = 0
+apply_root_value(2, _, 0).
+%%  Key = [0,1,1] ->  true
+apply_root_value(3, _, _).
+%%  Key = [1,0,0] ->  NOE = 0
+apply_root_value(4, 0, _).
+%%  Key = [1,0,1] ->  NBE #= NOE
+apply_root_value(5, NOE, NOE).
+%%  Key = [1,1,0] ->  NBE #= NOE
+apply_root_value(6, NOE, NOE).
+%%  Key = [1,1,1] ->  NOE = 0
+apply_root_value(7, 0, _).
 
 %% The above case analysis is based on the following constraints.
 % root_value_extension(Extension) :-
@@ -911,11 +921,9 @@ nilp_on_element(NilpRow, NewBasisElement, NilpIndex, Index, NilpOnElementEntry )
 
 %% Given the new thin basis NewBasis calculate its thin table
 make_new_table( Indices, Pairs, Table, NewBasis, NewTable ) :-
+        fast_transpose(NewTable, NewTable),
         maplist( set_diagonal( NewTable ), Indices ),
         maplist( intify_basis(Indices), NewBasis, IntBasis ),
-        length(Table, M),
-        length(NewTable, M),
-        maplist(lambda_21(length, M), NewTable),
         maplist( make_new_table_entry( Indices, Table, IntBasis, NewTable ), Pairs ).
 
 make_new_table_entry( _Indices, Table, IntBasis, NewTable, [I1, I2] ) :-
@@ -927,8 +935,7 @@ make_new_table_entry( _Indices, Table, IntBasis, NewTable, [I1, I2] ) :-
         get_entries( Table, FilteredPairs, Entries ),
         sumlist(Entries, Tot),
         Val is Tot mod 2,
-        get_entry( NewTable, [I1, I2], Val ),
-        get_entry( NewTable, [I2, I1], Val ).
+        get_entry( NewTable, [I1, I2], Val ).
 
 filtered_pairs(Ints1, Ints2, [MainInt|_]) -->
         (   foreach(X,Ints1),
@@ -948,34 +955,24 @@ set_diagonal( NewTable, I ) :-
 %% Lexicographically reduce switched tables. Similar methods to 3. LEX REDUCE TABLES
 canonical_order_tables_list( N, Roots, Powers, Tables, SwitchedTablesList,
                              OrderedTablesList) :-
-        maplist( make_table_row_sum_pair, Tables, TablesWithSums ),
-        maplist( canonical_order_rows0( N, Roots, Powers, TablesWithSums ),
+        (   foreach(T1,Tables),
+            foreach(MS1-T1,KL1)
+        do  multiset_of_row_sums(T1, MS1)
+        ),
+        keysort(KL1, KL2),
+        keyclumped(KL2, GroupedSimpleTables),
+        maplist( canonical_order_rows0( N, Roots, Powers, GroupedSimpleTables ),
                  SwitchedTablesList, OrderedTablesList ).
 
-make_table_row_sum_pair( Table, [X, Y] ) :-
-        X = Table,
-        multiset_of_row_sums( Table, Y ).
-
-canonical_order_rows0( _, _, _, _, [], []) :- !.
-canonical_order_rows0( N, Roots, Powers, SimpleTablesWithSums, Tables, OrderedTables) :-
-        maplist(canonical_order_rows( N, Roots, Powers, SimpleTablesWithSums ), Tables,
+canonical_order_rows0( N, Roots, Powers, GroupedSimpleTables, SwitchedTables, OrderedTables) :-
+        maplist(canonical_order_rows( N, Roots, Powers, GroupedSimpleTables ), SwitchedTables,
                 OrderedTables).
 
-canonical_order_rows( N, Roots, Powers, SimpleTablesWithSums, Rows, OrderedRows) :-
+canonical_order_rows( N, Roots, Powers, GroupedSimpleTables, Rows, OrderedRows) :-
         multiset_of_row_sums( Rows, RowSums),
-        (   foreach(TableWithSums, SimpleTablesWithSums),
-            fromto(SimpleTables,SimpleTables1,SimpleTables2,[]),
-            param(RowSums)
-        do  (TableWithSums = [Table, RowSums]
-            ->  SimpleTables1 = [Table|SimpleTables2]
-            ;   SimpleTables1 = SimpleTables2
-            )
-        ),
-        first_sol( lex_reduce_to_simple( N, Roots, Powers, Rows ),
+        memberchk(RowSums-SimpleTables, GroupedSimpleTables),
+        first_sol( can_permute_dispatcher( N, Roots, Powers, Rows ),
                    SimpleTables, OrderedRows ).
-
-lex_reduce_to_simple( N, Roots, Powers, Rows, Table ) :-
-        can_permute_dispatcher( N, Roots, Powers, Rows, Table).
 
 %% Make the toral switching graph
 %% If a table T1 switches to T2 then T2 might not have switched to T1
